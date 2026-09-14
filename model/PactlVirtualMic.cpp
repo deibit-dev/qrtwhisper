@@ -1,4 +1,3 @@
-#include <QCoreApplication>
 #include "PactlVirtualMic.h"
 
 #include <QProcess>
@@ -15,7 +14,7 @@ QString PactlVirtualMic::runCommand(const QStringList &args, bool *ok, QString *
 
     if (!process.waitForStarted(kTimeoutMs)) {
         if (ok) *ok = false;
-        if (stderrOut) *stderrOut = QCoreApplication::translate("PactlVirtualMic", "Failed to start 'pactl'.");
+        if (stderrOut) *stderrOut = QStringLiteral("Failed to start 'pactl'.");
         return {};
     }
 
@@ -23,7 +22,7 @@ QString PactlVirtualMic::runCommand(const QStringList &args, bool *ok, QString *
         process.kill();
         process.waitForFinished(kTimeoutMs);
         if (ok) *ok = false;
-        if (stderrOut) *stderrOut = QCoreApplication::translate("PactlVirtualMic", "'pactl' did not respond in time.");
+        if (stderrOut) *stderrOut = QStringLiteral("'pactl' did not respond in time.");
         return {};
     }
 
@@ -60,7 +59,7 @@ QString PactlVirtualMic::defaultOutputSink() const {
     return ok ? out.trimmed() : QString();
 }
 
-bool PactlVirtualMic::create(const QString &outputSink, QString *errorOut) {
+Error PactlVirtualMic::create(const QString &outputSink) {
     m_moduleIndex = -1;
 
     bool ok = false;
@@ -69,8 +68,7 @@ bool PactlVirtualMic::create(const QString &outputSink, QString *errorOut) {
     const QString modules = runCommand({QStringLiteral("list"), QStringLiteral("short"),
                                         QStringLiteral("modules")}, &ok, &err);
     if (!ok) {
-        if (errorOut) *errorOut = err;
-        return false;
+        return Error{ErrorCode::VirtualMicFailed, err};
     }
 
     for (const QString &line : modules.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) {
@@ -94,18 +92,18 @@ bool PactlVirtualMic::create(const QString &outputSink, QString *errorOut) {
     }, &ok, &err);
 
     if (!ok) {
-        if (errorOut) *errorOut = err.isEmpty() ? QCoreApplication::translate("PactlVirtualMic", "Failed to load the module.") : err;
-        return false;
+        return Error{ErrorCode::VirtualMicFailed,
+                     err.isEmpty() ? QStringLiteral("Failed to load the module.") : err};
     }
 
     bool parsed = false;
     m_moduleIndex = out.trimmed().toInt(&parsed);
     if (!parsed) {
-        if (errorOut) *errorOut = QCoreApplication::translate("PactlVirtualMic", "Could not read the loaded module index.");
-        return false;
+        return Error{ErrorCode::VirtualMicFailed,
+                     QStringLiteral("Could not read the loaded module index.")};
     }
 
-    return true;
+    return Error{};
 }
 
 bool PactlVirtualMic::destroy() {

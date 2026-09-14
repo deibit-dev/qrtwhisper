@@ -9,7 +9,7 @@ class PulseAudioVirtualMic : public VirtualMic {
 public:
     QStringList outputSinks() const override;
     QString defaultOutputSink() const override;
-    bool create(const QString &outputSink, QString *errorOut = nullptr) override;
+    Error create(const QString &outputSink) override;
     bool destroy() override;
     QString sourceToken() const override;
 

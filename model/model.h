@@ -1,7 +1,6 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include <iostream>
 #include <list>
 #include <string>
 
@@ -9,36 +8,36 @@
 #include <QString>
 #include <QThread>
 
-class Worker;
+#include "Error.h"
+#include "WhisperParams.h"
+
+class TranscriptionWorker;
 
 class Model : public QObject {
     Q_OBJECT
 
 public:
     Model();
-    bool start(int mic_dev, const std::string &modelPath);
-    QString get_last_transcription() { return last_transcription; }
-    QString lastError() const { return m_lastError; }
-    std::list<std::pair<int, std::string>> get_mic_devices();
-    int find_capture_device(const std::string &token);
-    void stop_transcription();
+    bool startTranscription(int mic_dev, const std::string &modelPath);
+    QString lastTranscription() const { return m_lastTranscription; }
+    Error lastError() const { return m_lastError; }
+    std::list<std::pair<int, std::string>> micDevices();
+    int findCaptureDevice(const std::string &token);
+    void stopTranscription();
 
 signals:
-    void update();
+    void transcriptionReady();
 
 private slots:
-    void handleMessage(const QString &msg) {
-        std::cout << msg.toStdString() << std::endl;
-        last_transcription = msg;
-        emit update();
-    }
+    void onSegmentTranscribed(const QString &text);
 
 private:
-    Worker* worker = nullptr;
-    QThread workerThread;
-    QString last_transcription;
-    QString m_lastError;
-    std::list<std::pair<int, std::string>> mic_devices;
+    whisper_params m_params;
+    TranscriptionWorker* m_worker = nullptr;
+    QThread m_workerThread;
+    QString m_lastTranscription;
+    Error m_lastError;
+    std::list<std::pair<int, std::string>> m_micDevices;
 };
 
 #endif // MODEL_H

@@ -35,8 +35,12 @@ endif()
 add_executable(${PROJECT_NAME}
         main.cpp
         model/model.cpp model/model.h
-        model/Worker.cpp model/Worker.h
         model/WhisperParams.h
+        model/TranscriptionWorker.cpp model/TranscriptionWorker.h
+        model/audio/IAudioStream.h
+        model/audio/SdlAudioStream.cpp model/audio/SdlAudioStream.h
+        model/engine/ITranscriptionEngine.h
+        model/engine/WhisperEngine.cpp model/engine/WhisperEngine.h
         controller/controller.cpp controller/controller.h
         view/TextRender.cpp view/TextRender.h
         view/TransparentWindow.h
@@ -67,7 +71,7 @@ set(GGML_CUDA 1)
 #   -DCMAKE_CUDA_ARCHITECTURES=75;86;89
 #   -DCMAKE_CUDA_ARCHITECTURES="75;86;89;120" (RTX 50xx, requiere CUDA >= 12.8)
 if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
-    set(CMAKE_CUDA_ARCHITECTURES "75;86;89" CACHE STRING "Arquitecturas CUDA a compilar (75 = GTX 16xx)")
+    set(CMAKE_CUDA_ARCHITECTURES "75" CACHE STRING "Arquitecturas CUDA a compilar (75 = GTX 16xx)")
     message(STATUS "QRTWhisper: CUDA architectures default: 75")
 endif()
 set(WHISPER_SDL2 ON)

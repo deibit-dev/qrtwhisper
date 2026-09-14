@@ -2,6 +2,7 @@
 
 #include "MainWidget.h"
 #include "model.h"
+#include "Error.h"
 #include "ModelManagerDialog.h"
 #include "TextRender.h"
 #include "Tray.h"
@@ -20,7 +21,7 @@
 Controller::Controller(Model* model, View* view, VirtualMic* virtualMic, ModelManager* modelManager, QObject* parent)
     : QObject(parent), m_model(model), m_view(view), m_virtualMic(virtualMic), m_modelManager(modelManager)
 {
-    connect(m_model, &Model::update, this, &Controller::handleDataUpdate);
+    connect(m_model, &Model::transcriptionReady, this, &Controller::onTranscriptionReady);
 
     auto main_widget = m_view->getMainWidget();
     connect(main_widget, &MainWidget::startClicked, this, &Controller::start_transcription);
@@ -82,7 +83,7 @@ void Controller::start_main() {
     }
     main_widget->select_output(m_virtualMic->defaultOutputSink());
 
-    for (const auto &dev : m_model->get_mic_devices()) {
+    for (const auto &dev : m_model->micDevices()) {
         main_widget->add_mic_dev(QString::fromStdString(dev.second));
     }
 
@@ -270,6 +271,24 @@ void Controller::onMetadataFailed(const QString &error) {
     m_modelDialog->setStatus(tr("Failed to fetch model information: ") + error);
 }
 
+QString Controller::errorMessage(const Error &error) const {
+    switch (error.code) {
+    case ErrorCode::AudioCaptureFailed:
+        return tr("Failed to initialize audio capture (SDL).");
+    case ErrorCode::ModelLoadFailed:
+        return tr("Failed to load model: %1").arg(error.detail);
+    case ErrorCode::UnknownLanguage:
+        return tr("Unknown language: %1").arg(error.detail);
+    case ErrorCode::TranscriptionFailed:
+        return tr("Transcription failed.");
+    case ErrorCode::VirtualMicFailed:
+        return tr("Failed to create the virtual microphone:\n") + error.detail;
+    case ErrorCode::None:
+        break;
+    }
+    return {};
+}
+
 void Controller::start_transcription() {
     auto main_widget = m_view->getMainWidget();
     m_displayMethod = main_widget->displayMethod();
@@ -293,18 +312,17 @@ void Controller::start_transcription() {
     int capture_id = -1;
 
     if (main_widget->sourceMode() == SourceMode::VirtualOutput) {
-        QString error;
-        if (!m_virtualMic->create(main_widget->selectedOutputName(), &error)) {
+        Error error = m_virtualMic->create(main_widget->selectedOutputName());
+        if (!error.ok()) {
             main_widget->setStartEnabled(true);
-            QMessageBox::warning(main_widget, QStringLiteral("QRTWhisper"),
-                                 tr("Failed to create the virtual microphone:\n") + error);
+            QMessageBox::warning(main_widget, QStringLiteral("QRTWhisper"), errorMessage(error));
             return;
         }
         m_virtualMicActive = true;
 
         const std::string token = m_virtualMic->sourceToken().toStdString();
         for (int attempt = 0; attempt < 12 && capture_id < 0; ++attempt) {
-            capture_id = m_model->find_capture_device(token);
+            capture_id = m_model->findCaptureDevice(token);
             if (capture_id < 0) {
                 QThread::msleep(250);
             }
@@ -322,18 +340,21 @@ void Controller::start_transcription() {
         capture_id = main_widget->selectedMicId();
     }
 
-    if (!m_model->start(capture_id, modelPath.toStdString())) {
+    if (!m_model->startTranscription(capture_id, modelPath.toStdString())) {
         if (m_virtualMicActive) {
             m_virtualMic->destroy();
             m_virtualMicActive = false;
         }
         main_widget->setStartEnabled(true);
-        QMessageBox::warning(main_widget, QStringLiteral("QRTWhisper"), m_model->lastError());
+        QMessageBox::warning(main_widget, QStringLiteral("QRTWhisper"), errorMessage(m_model->lastError()));
         return;
     }
 
     main_widget->hide();
     m_view->getTray()->show();
+
+    // Whisper startup finished: notify readiness (always via notification, never subtitle).
+    m_view->getTray()->showMessage(QStringLiteral("QRTWhisper"), tr("Ready"));
 
     if (m_displayMethod == DisplayMethod::Subtitles) {
         m_view->getTextRender()->show();
@@ -342,7 +363,7 @@ void Controller::start_transcription() {
 
 void Controller::quit() {
     m_modelManager->cancelDownload();
-    m_model->stop_transcription();
+    m_model->stopTranscription();
     if (m_virtualMicActive) {
         m_virtualMic->destroy();
         m_virtualMicActive = false;
@@ -350,8 +371,8 @@ void Controller::quit() {
     QApplication::quit();
 }
 
-void Controller::handleDataUpdate() {
-    const QString str = m_model->get_last_transcription();
+void Controller::onTranscriptionReady() {
+    const QString str = m_model->lastTranscription();
     if (m_displayMethod == DisplayMethod::Subtitles) {
         m_view->getTextRender()->updateLabel(str);
     } else {

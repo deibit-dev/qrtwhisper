@@ -28,6 +28,7 @@ struct whisper_params {
     bool save_audio    = false;
     bool use_gpu       = true;
     bool flash_attn    = false;
+    bool filter_blank_audio = true;
 
     std::string language  = "en";
     std::string model;

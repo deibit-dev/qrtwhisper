@@ -13,6 +13,7 @@ class VirtualMic;
 class ModelManagerDialog;
 class QTranslator;
 class QAction;
+struct Error;
 
 class Controller : public QObject {
     Q_OBJECT
@@ -25,7 +26,7 @@ public:
     void setLanguage(const QString &code);
 
 private slots:
-    void handleDataUpdate();
+    void onTranscriptionReady();
     void openModelManager();
     void onModelDownloadRequested(const QString &id);
     void onModelDeleteRequested(const QString &id);
@@ -42,6 +43,7 @@ private:
     void refreshModelCombo();
     QVector<ModelItem> buildModelItems() const;
     void refreshAfterModelsDirChange();
+    QString errorMessage(const Error &error) const;
 
     Model* m_model;
     View*  m_view;

@@ -1,4 +1,3 @@
-#include <QCoreApplication>
 #include "PulseAudioVirtualMic.h"
 
 #include <QByteArray>
@@ -106,23 +105,23 @@ void waitDone(OpData *data, pa_operation *op) {
 
 class PulseSession {
 public:
-    explicit PulseSession(QString *errorOut) {
+    PulseSession() {
         m_mainloop = pa_threaded_mainloop_new();
         if (!m_mainloop) {
-            fail(errorOut, QCoreApplication::translate("PulseAudioVirtualMic", "Failed to create the PulseAudio mainloop."));
+            fail(QStringLiteral("Failed to create the PulseAudio mainloop."));
             return;
         }
 
         m_context = pa_context_new(pa_threaded_mainloop_get_api(m_mainloop), "QRTWhisper");
         if (!m_context) {
-            fail(errorOut, QCoreApplication::translate("PulseAudioVirtualMic", "Failed to create the PulseAudio context."));
+            fail(QStringLiteral("Failed to create the PulseAudio context."));
             return;
         }
 
         pa_context_set_state_callback(m_context, stateCallback, m_mainloop);
 
         if (pa_threaded_mainloop_start(m_mainloop) < 0) {
-            fail(errorOut, QCoreApplication::translate("PulseAudioVirtualMic", "Failed to start the PulseAudio mainloop."));
+            fail(QStringLiteral("Failed to start the PulseAudio mainloop."));
             return;
         }
 
@@ -130,7 +129,7 @@ public:
         if (pa_context_connect(m_context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
             const QString error = QString::fromUtf8(pa_strerror(pa_context_errno(m_context)));
             pa_threaded_mainloop_unlock(m_mainloop);
-            fail(errorOut, error);
+            fail(error);
             return;
         }
 
@@ -149,9 +148,7 @@ public:
         pa_threaded_mainloop_unlock(m_mainloop);
 
         if (!ready) {
-            fail(errorOut, error.isEmpty()
-                     ? QCoreApplication::translate("PulseAudioVirtualMic", "Failed to connect to the PulseAudio server.")
-                     : error);
+            fail(error.isEmpty() ? QStringLiteral("Failed to connect to the PulseAudio server.") : error);
             return;
         }
 
@@ -172,24 +169,24 @@ public:
     }
 
     bool ok() const { return m_ok; }
+    const Error &error() const { return m_error; }
     pa_context *context() const { return m_context; }
     pa_threaded_mainloop *mainloop() const { return m_mainloop; }
 
 private:
-    static void fail(QString *errorOut, const QString &error) {
-        if (errorOut) {
-            *errorOut = error;
-        }
+    void fail(const QString &detail) {
+        m_error = Error{ErrorCode::VirtualMicFailed, detail};
     }
 
     pa_threaded_mainloop *m_mainloop = nullptr;
     pa_context *m_context = nullptr;
     bool m_ok = false;
+    Error m_error;
 };
 } // namespace
 
 QStringList PulseAudioVirtualMic::outputSinks() const {
-    PulseSession session(nullptr);
+    PulseSession session;
     if (!session.ok()) {
         return {};
     }
@@ -205,7 +202,7 @@ QStringList PulseAudioVirtualMic::outputSinks() const {
 }
 
 QString PulseAudioVirtualMic::defaultOutputSink() const {
-    PulseSession session(nullptr);
+    PulseSession session;
     if (!session.ok()) {
         return {};
     }
@@ -220,12 +217,12 @@ QString PulseAudioVirtualMic::defaultOutputSink() const {
     return data.defaultSink;
 }
 
-bool PulseAudioVirtualMic::create(const QString &outputSink, QString *errorOut) {
+Error PulseAudioVirtualMic::create(const QString &outputSink) {
     destroy();
 
-    PulseSession session(errorOut);
+    PulseSession session;
     if (!session.ok()) {
-        return false;
+        return session.error();
     }
     pa_context *context = session.context();
     pa_threaded_mainloop *mainloop = session.mainloop();
@@ -255,20 +252,18 @@ bool PulseAudioVirtualMic::create(const QString &outputSink, QString *errorOut) 
     pa_operation *loadOp = pa_context_load_module(context, "module-remap-source", argument.constData(),
                                                   loadModuleCallback, &loadData);
     if (!loadOp) {
-        if (errorOut) *errorOut = QCoreApplication::translate("PulseAudioVirtualMic", "Failed to load the PulseAudio module.");
-        return false;
+        return Error{ErrorCode::VirtualMicFailed,
+                     QStringLiteral("Failed to load the PulseAudio module.")};
     }
     waitDone(&loadData, loadOp);
 
     if (loadData.index == PA_INVALID_INDEX) {
-        if (errorOut) {
-            *errorOut = QString::fromUtf8(pa_strerror(pa_context_errno(context)));
-        }
-        return false;
+        return Error{ErrorCode::VirtualMicFailed,
+                     QString::fromUtf8(pa_strerror(pa_context_errno(context)))};
     }
 
     m_moduleIndex = static_cast<int>(loadData.index);
-    return true;
+    return Error{};
 }
 
 bool PulseAudioVirtualMic::destroy() {
@@ -276,7 +271,7 @@ bool PulseAudioVirtualMic::destroy() {
         return true;
     }
 
-    PulseSession session(nullptr);
+    PulseSession session;
     if (!session.ok()) {
         m_moduleIndex = -1;
         return false;
