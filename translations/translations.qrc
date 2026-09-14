@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/translations">
+        <file alias="qrtwhisper_es.qm">qrtwhisper_es.qm</file>
+    </qresource>
+</RCC>
